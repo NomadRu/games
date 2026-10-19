@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шахматы ♔♚</title>
+<style>
+  :root { --square: min(13vw, 88px); }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+    background: #0b1021;
+    color: #e8eaf2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    min-height: 100vh;
+    touch-action: manipulation;
+  }
+
+  h1 { font-size: 1.35rem; margin: 0; letter-spacing: 0.06em; }
+
+  /* ---------- стартовые экраны ---------- */
+  .screen {
+    position: fixed; inset: 0; background: #0b1021;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; z-index: 100; padding: 24px; text-align: center;
+  }
+  .screen.hidden { display: none; }
+
+  /* ---------- кнопки ---------- */
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  button {
+    border: none; border-radius: 12px; padding: 12px 22px;
+    font-family: inherit; font-size: 15px; font-weight: 700;
+    color: #0b1021; background: #e8eaf2; cursor: pointer;
+  }
+  button:hover { background: #ffffff; }
+  button:active { transform: scale(0.96); }
+
+  button.secondary { background: #334155; color: #e8eaf2; }
+  button.secondary:hover { background: #475569; }
+  button.big { padding: 16px 30px; font-size: 17px; min-width: 230px; }
+  button.outline { background: transparent; color: #e8eaf2; border: 2px solid #64748b; }
+  button.outline:hover { border-color: #e8eaf2; }
+
+  /* ---------- доска ---------- */
+  .wrap {
+    display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;
+    justify-content: center; max-width: 1080px;
+  }
+  .board-wrap { position: relative; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, var(--square));
+    grid-template-rows: repeat(8, var(--square));
+    border: 6px solid #1e293b; border-radius: 10px;
+    box-shadow: 0 24px 48px -12px rgba(0,0,0,.55);
+    touch-action: none; user-select: none; position: relative;
+    background: #0f172a;
+  }
+  .square {
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--square) * 0.8); cursor: pointer; position: relative;
+    min-size: 44px;
+  }
+  .square.light { background: #e8d9a8; }
+  .square.dark { background: #b58858; }
+  .square.selected { background: #6ee7b7 !important; }
+  .square.last-move { background: rgba(96, 165, 250, 0.45) !important; }
+  .square.check { background: #f87171 !important; }
+  .square.disabled { opacity: 0.55; pointer-events: none; }
+
+  /* белые и чёрные фигуры — видны на любых клетках */
+  .piece { z-index: 2; filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
+  .piece.w { color: #0f172a; text-shadow: 0 0 10px rgba(255,255,255,.95); }
+  .piece.b { color: #e8eaf2; text-shadow: 0 0 10px rgba(0,0,0,.85); }
+
+  /* подсказки ходов */
+  .square.legal-empty::after,
+  .square.legal-take::after {
+    content: ''; position: absolute; inset: 0; z-index: 1; border-radius: 50%;
+  }
+  .square.legal-empty::after {
+    width: 20px; height: 20px; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(110, 231, 183, 0.85);
+  }
+  .square.legal-take::after { border: 4px solid #ef4444; }
+
+  .coord {
+    position: absolute; font-size: 11px; color: #64748b; pointer-events: none;
+    font-weight: 700;
+  }
+
+  /* ---------- панель справа ---------- */
+  .sidebar {
+    display: flex; flex-direction: column; gap: 10px;
+    min-width: 250px; max-width: 360px;
+  }
+  .status {
+    font-size: 17px; font-weight: 700; padding: 10px 14px;
+    background: #1e293b; border-radius: 10px; text-align: center;
+  }
+  .turn-w { color: #6ee7b7; }
+  .turn-b { color: #fca5a5; }
+  .mode-line { font-size: 13px; color: #94a3b8; text-align: center; margin-top: 4px; }
+  .check-ann { font-size: 14px; color: #f87171; font-weight: 700; text-align: center; }
+  .move-list {
+    overflow: auto; max-height: 420px; border: 1px solid #334155;
+    border-radius: 10px; background: #0f172a; padding: 10px; font-size: 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .move-list .pair { font-weight: 700; color: #94a3b8; margin: 6px 0 2px; }
+  .move-list .move { margin: 3px 0; padding: 2px 6px; border-radius: 6px; }
+  .move-list .move.white { color: #93c5fd; }
+  .move-list .move.black { color: #a78bfa; }
+  .move-list .move.current { background: #334155; font-weight: 700; }
+  .over { font-size: 15px; font-weight: 700; text-align: center; padding: 8px; color: #6ee7b7; }
+  .thinking { font-size: 13px; color: #93c5fd; text-align: center; margin-top: 6px; }
+  .hint { font-size: 13px; color: #94a3b8; text-align: center; max-width: 320px; }
+
+  @media (max-width: 760px) {
+    .wrap { flex-direction: column; align-items: center; gap: 14px; }
+    .sidebar {
+      width: 100%; max-width: 100%; flex-direction: row; overflow-x: auto; gap: 8px;
+      padding-bottom: 8px;
+    }
+    .status { flex: 1; }
+    .move-list { flex: 1; max-height: 150px; }
+    :root { --square: min(18vw, 72px); }
+  }
+
+  /* ---------- анимации ---------- */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.55); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes selectPulse {
+    0%, 100% { box-shadow: inset 0 0 0 0 rgba(110, 231, 183, 0.5); }
+    50% { box-shadow: inset 0 0 0 7px rgba(110, 231, 183, 0.35); }
+  }
+  @keyframes takePop {
+    0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+    70% { transform: translate(-50%, -50%) scale(1.25); opacity: 0.9; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+  }
+
+  .screen {
+    animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  #game-ui, #game-controls, #game-hint {
+    animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .square.selected {
+    animation: selectPulse 2.2s ease-in-out infinite;
+  }
+
+  .square.legal-take::after {
+    animation: takePop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .animate-pieces .piece {
+    animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .card:hover { transform: translateY(-3px) scale(1.02); }
+
+  /* ---------- превращение пешки ---------- */
+  #promo {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center; z-index: 110;
+  }
+  #promo.show { display: flex; }
+  .promo-card {
+    background: #1e293b; border: 2px solid #e8eaf2; border-radius: 14px;
+    padding: 20px; display: flex; gap: 14px; align-items: center;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6);
+  }
+  .promo-card b { display: block; margin-bottom: 10px; color: #e8eaf2; }
+  .promo-btn {
+    width: 52px; height: 52px; font-size: 28px; border-radius: 12px;
+    border: 2px solid #94a3b8; cursor: pointer; background: #e8eaf2;
+    color: #0b1021; font-weight: 700;
+  }
+  .promo-btn:hover { background: #ffffff; }
+</style>
+</head>
+<body>
+<h1>Шахматы ♔♚</h1>
+
+<!-- стартовый экран: выбор режима -->
+<div class="screen" id="start-screen">
+  <div style="font-size: 36px; margin-bottom: 4px;">♔♚</div>
+  <h2 style="margin: 0 0 8px; font-size: 22px;">Шахматы</h2>
+  <p style="color: #94a3b8; max-width: 300px; margin: 0 auto 16px;">
+    Выберите режим:
+  </p>
+  <div class="btn-row">
+    <button class="big" onclick="startGame('friend')">С другом</button>
+    <button class="big outline" onclick="showColor()">С ботом</button>
+  </div>
+  <p class="hint">На телефоне и ПК — тапните на фигуру, затем на клетку.</p>
+</div>
+
+<!-- выбор цвета против бота -->
+<div class="screen hidden" id="color-screen">
+  <h2 style="margin: 0 0 8px; font-size: 20px;">За кем сыграете?</h2>
+  <div class="btn-row">
+    <button class="big" onclick="startGame('bot','w')">Белые ♔ (вы первыми)</button>
+    <button class="big" onclick="startGame('bot','b')">Чёрные ♚ (бот ходит первым)</button>
+  </div>
+  <div style="margin-top: 14px;">
+    <button class="secondary outline" onclick="showStart()">Назад</button>
+  </div>
+</div>
+
+<!-- сама игра (скрыта до выбора режима) -->
+<div class="wrap" id="game-ui" style="display:none;">
+  <div class="board-wrap" id="board-wrap">
+    <div class="board" id="board"></div>
+    <div id="bot-thinking" class="thinking hidden">Бот думает…</div>
+  </div>
+  <div class="sidebar">
+    <div class="status">Ход: <span class="turn turn-w" id="turn-text">Белые</span></div>
+    <div class="mode-line" id="mode-line"></div>
+    <div class="check-ann" id="check-ann" hidden>Под шахом!</div>
+    <div id="over" class="over" hidden></div>
+    <div class="move-list" id="move-list"></div>
+  </div>
+</div>
+
+<div class="controls" id="game-controls" style="display:none;">
+  <button id="new-btn" class="secondary">Новая игра</button>
+  <button id="flip-btn">Повернуть доску</button>
+  <button id="menu-btn" class="secondary">В меню</button>
+</div>
+
+<p class="hint" id="game-hint" style="display:none;">
+  Тап/клик на фигуру, затем на цель. Зелёная точка — ход, красное кольцо — взятие.
+</p>
+
+<!-- экран выбора фигуры при превращении -->
+<div id="promo">
+  <div class="promo-card">
+    <b id="promo-text">Превращение пешки — выберите фигуру:</b>
+    <button class="promo-btn" data-promo="q">♕</button>
+    <button class="promo-btn" data-promo="r">♖</button>
+    <button class="promo-btn" data-promo="b">♗</button>
+    <button class="promo-btn" data-promo="n">♘</button>
+  </div>
+</div>
+
+<script>
+/* ---------- константы ---------- */
+const COLS = 'abcdefgh'.split('');
+const ROWS = [8, 7, 6, 5, 4, 3, 2, 1];
+
+const START = [
+  ['br','bn','bb','bq','bk','bb','bn','br'],
+  ['bp','bp','bp','bp','bp','bp','bp','bp'],
+  ['','','','','','','',''],
+  ['','','','','','','',''],
+  ['','','','','','','',''],
+  ['','','','','','','',''],
+  ['wp','wp','wp','wp','wp','wp','wp','wp'],
+  ['wr','wn','wb','wq','wk','wb','wn','wr']
+];
+
+const PIECE = {
+  w: { k:'♔', q:'♕', r:'♖', b:'♗', n:'♘', p:'♙' },
+  b: { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
+};
+
+const LETTER = { k:'K', q:'Q', r:'R', b:'B', n:'N', p:'' };
+
+/* ---------- состояние ---------- */
+let board, turn = 'w', selected = null, legal = [], lastMove = null, moves = [];
+let gameOver = false, promoting = null;
+let gameMode = 'friend';   // 'friend' | 'bot'
+let humanColor = 'w';
+let botThinking = false;
+
+const boardEl = $('board');
+const turnText = $('turn-text');
+const checkAnn = $('check-ann');
+const overEl = $('over');
+const moveList = $('move-list');
+const promoEl = $('promo');
+const gameUI = $('game-ui');
+const gameControls = $('game-controls');
+const gameHint = $('game-hint');
+const modeLine = $('mode-line');
+const botThinkingEl = $('bot-thinking');
+
+/* ---------- утилиты ---------- */
+function $(id) { return document.getElementById(id); }
+
+function showStart() {
+  $('start-screen').classList.remove('hidden');
+  $('color-screen').classList.add('hidden');
+  gameUI.style.display = 'none';
+  gameControls.style.display = 'none';
+  gameHint.style.display = 'none';
+}
+
+function showColor() {
+  $('start-screen').classList.add('hidden');
+  $('color-screen').classList.remove('hidden');
+  gameUI.style.display = 'none';
+}
+
+function startGame(mode, color) {
+  gameMode = mode;
+  humanColor = color !== undefined ? color : 'w';
+  $('start-screen').classList.add('hidden');
+  $('color-screen').classList.add('hidden');
+  gameUI.style.display = '';
+  gameControls.style.display = '';
+  gameHint.style.display = '';
+  modeLine.textContent = gameMode === 'bot'
+    ? 'Против бота — вы за ' + (humanColor === 'w' ? 'белых ♔' : 'чёрных ♚')
+    : 'С другом на одном устройстве';
+  botThinking = false;
+  botThinkingEl.hidden = true;
+  initGame();
+}
+
+function other(c) { return c === 'w' ? 'b' : 'w'; }
+function sqName(r, c) { return COLS[c] + ROWS[r]; }
+function inBounds(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+function charOf(code) { return code ? PIECE[code[0]][code[1]] : ''; }
+function kingPos(b, color) {
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (b[r][c] === color + 'k') return [r, c];
+  return null;
+}
+
+/* псевдо-ходы фигуры (без учёта шаха) */
+function pseudoMoves(b, r, c) {
+  const code = b[r][c];
+  if (!code) return [];
+  const color = code[0];
+  const type = code[1];
+  const dir = color === 'w' ? -1 : 1;
+  const startRow = color === 'w' ? 6 : 1;
+  const enemy = other(color);
+  const out = [];
+
+  const blocked = (nr, nc) => {
+    if (!inBounds(nr, nc)) return true;
+    const t = b[nr][nc];
+    if (!t) { out.push([nr, nc]); return false; }
+    if (t[0] === enemy) out.push([nr, nc]);
+    return true;
+  };
+
+  const slide = (dr, dc) => {
+    let nr = r + dr;
+    let nc = c + dc;
+    while (inBounds(nr, nc) && !blocked(nr, nc)) {
+      nr += dr;
+      nc += dc;
+    }
+  };
+
+  if (type === 'p') {
+    const nr = r + dir;
+    if (inBounds(nr, c) && !b[nr][c]) {
+      out.push([nr, c]);
+      if (r === startRow && inBounds(r + 2 * dir, c) && !b[r + 2 * dir][c])
+        out.push([r + 2 * dir, c]);
+    }
+    for (const dc of [-1, 1]) {
+      const nr = r + dir;
+      const nc = c + dc;
+      if (inBounds(nr, nc)) {
+        const t = b[nr][nc];
+        if (t && t[0] === enemy) out.push([nr, nc]);
+      }
+    }
+  } else if (type === 'n') {
+    for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])
+      blocked(r + dr, c + dc);
+  } else if (type === 'b') {
+    for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) slide(dr, dc);
+  } else if (type === 'r') {
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) slide(dr, dc);
+  } else if (type === 'q') {
+    for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]])
+      slide(dr, dc);
+  } else if (type === 'k') {
+    for (const [dr, dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]])
+      blocked(r + dr, c + dc);
+  }
+  return out;
+}
+
+/* атакована ли клетка цветом byColor */
+function attacked(b, r, c, byColor) {
+  for (let rr = 0; rr < 8; rr++)
+    for (let cc = 0; cc < 8; cc++) {
+      const code = b[rr][cc];
+      if (code && code[0] === byColor)
+        if (pseudoMoves(b, rr, cc).some(m => m[0] === r && m[1] === c)) return true;
+    }
+  return false;
+}
+
+/* законные ходы фигуры (не оставляющие своего короля под шахом) */
+function legalMovesForPiece(b, r, c) {
+  const code = b[r][c];
+  const color = code[0];
+  const kp = kingPos(b, color);
+  return pseudoMoves(b, r, c).filter(([tr, tc]) => {
+    const copy = b.map(row => row.slice());
+    copy[tr][tc] = copy[r][c];
+    copy[r][c] = '';
+    const kp2 = copy[tr][tc] === color + 'k' ? [tr, tc] : kp;
+    return !attacked(copy, kp2[0], kp2[1], other(color));
+  });
+}
+
+/* все законные ходы стороны */
+function allLegalMoves(b, color) {
+  const out = [];
+  for (let r = 0; r < 8; r++)
+    for (let cc = 0; cc < 8; cc++) {
+      const code = b[r][cc];
+      if (code && code[0] === color)
+        for (const m of legalMovesForPiece(b, r, cc)) out.push({ from: [r, cc], to: m });
+    }
+  return out;
+}
+
+const VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+
+function sanString(code, from, to, captured, check, mate) {
+  let s = '';
+  if (code[1] !== 'p') s += LETTER[code[1]];
+  if (captured) {
+    if (code[1] === 'p') s += COLS[from[1]];
+    s += 'x';
+  }
+  s += sqName(to[0], to[1]);
+  if (mate) s += '#';
+  else if (check) s += '+';
+  return s;
+}
+
+/* ---------- игровой процесс ---------- */
+function initGame() {
+  board = START.map(row => row.slice());
+  turn = 'w';
+  selected = null; legal = []; lastMove = null; moves = [];
+  gameOver = false; promoting = null;
+  promoEl.classList.remove('show');
+  overEl.hidden = true; checkAnn.hidden = true;
+  botThinking = false; botThinkingEl.hidden = true;
+  boardEl.classList.remove('disabled');
+  render();
+  maybeBotMove();
+}
+
+function selectSquare(r, c) {
+  selected = { r, c };
+  legal = legalMovesForPiece(board, r, c);
+  render();
+}
+
+function deselect() {
+  selected = null;
+  legal = [];
+  render();
+}
+
+function showPromotion(r, c) {
+  promoting = { r, c };
+  $('promo-text').textContent = 'Превращение пешки на ' + sqName(r, c) + ' — выберите фигуру:';
+  promoEl.classList.add('show');
+}
+
+function finishPromotion(type) {
+  promoEl.classList.remove('show');
+  const { r, c } = promoting;
+  promoting = null;
+  board[r][c] = (turn === 'w' ? 'w' : 'b') + type;
+  turn = other(turn);
+  completeMove();
+}
+
+function completeMove() {
+  const movedColor = other(turn);
+  const kp = kingPos(board, turn);
+  const inCheck = kp ? attacked(board, kp[0], kp[1], movedColor) : false;
+  const legalCount = allLegalMoves(board, turn).length;
+
+  if (inCheck) {
+    checkAnn.hidden = false;
+    let last = moves[moves.length - 1];
+    if (!last.endsWith('#') && !last.endsWith('+')) last += '+';
+    moves[moves.length - 1] = last;
+  } else {
+    checkAnn.hidden = true;
+  }
+
+  if (legalCount === 0) {
+    gameOver = true;
+    let last = moves[moves.length - 1];
+    if (!last.endsWith('#')) last = last.replace(/\+$/, '') + '#';
+    moves[moves.length - 1] = last;
+    overEl.textContent = 'Мат! Победили ' + (movedColor === 'w' ? 'Белые' : 'Чёрные') + '.';
+    overEl.hidden = false;
+  } else if (!inCheck) {
+    overEl.hidden = true;
+  }
+
+  boardEl.classList.remove('disabled');
+  botThinking = false;
+  botThinkingEl.hidden = true;
+  render();
+  maybeBotMove();
+}
+
+function movePiece(fr, fc, tr, tc) {
+  selected = null;
+  legal = [];
+
+  const code = board[fr][fc];
+  const captured = !!board[tr][tc];
+  board[tr][tc] = code;
+  board[fr][fc] = '';
+  lastMove = [[fr, fc], [tr, tc]];
+
+  if (code[1] === 'p' && (tr === 0 || tr === 7)) {
+    moves.push(sanString(code, [fr, fc], [tr, tc], captured, false, false));
+    showPromotion(tr, tc);
+    render();
+    return;
+  }
+
+  moves.push(sanString(code, [fr, fc], [tr, tc], captured, false, false));
+  turn = other(turn);
+  completeMove();
+}
+
+function handleSquareClick(r, c) {
+  if (gameOver || promoting || botThinking) return;
+  if (gameMode === 'bot' && turn !== humanColor) return;
+
+  const code = board[r][c];
+  const own = code ? code[0] === turn : false;
+
+  if (selected) {
+    if (selected.r === r && selected.c === c) { deselect(); return; }
+    const target = legal.some(m => m[0] === r && m[1] === c);
+    if (target) { movePiece(selected.r, selected.c, r, c); return; }
+    if (own) { selectSquare(r, c); return; }
+    deselect();
+    return;
+  }
+
+  if (own) selectSquare(r, c);
+}
+
+/* ---------- бот ---------- */
+function maybeBotMove() {
+  if (gameOver || promoting) return;
+  if (gameMode !== 'bot' || turn === humanColor) return;
+
+  botThinking = true;
+  boardEl.classList.add('disabled');
+  botThinkingEl.hidden = false;
+  render();
+
+  setTimeout(() => {
+    const cands = allLegalMoves(board, turn);
+    if (cands.length === 0) { completeMove(); return; }
+    const pick = chooseBotMove(cands);
+    movePiece(pick.from[0], pick.from[1], pick.to[0], pick.to[1]);
+  }, 500);
+}
+
+function chooseBotMove(cands) {
+  const color = turn;
+  const enemy = other(color);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const m of cands) {
+    let score = 0;
+    const code = board[m.from[0]][m.from[1]];
+    const target = board[m.to[0]][m.to[1]];
+    if (target) score += VALUES[target[1]] * 10;
+
+    const copy = board.map(row => row.slice());
+    copy[m.to[0]][m.to[1]] = copy[m.from[0]][m.from[1]];
+    copy[m.from[0]][m.from[1]] = '';
+    const kp = kingPos(copy, enemy);
+    if (kp && attacked(copy, kp[0], kp[1], color)) score += 60;
+
+    const cc = m.to[1], rr = m.to[0];
+    score += Math.max(0, 4 - Math.max(Math.abs(cc - 3.5), Math.abs(rr - 3.5))) * 3;
+
+    score += Math.random() * 14;
+    if (score > bestScore) { bestScore = score; best = m; }
+  }
+  return best || cands[0];
+}
+
+/* ---------- рендер ---------- */
+function render() {
+  boardEl.innerHTML = '';
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const sq = document.createElement('div');
+      sq.className = 'square ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      sq.addEventListener('click', () => handleSquareClick(r, c));
+
+      const code = board[r][c];
+      if (code) {
+        const p = document.createElement('span');
+        p.className = 'piece ' + code[0];
+        p.textContent = charOf(code);
+        sq.appendChild(p);
+      }
+
+      if (selected && selected.r === r && selected.c === c)
+        sq.classList.add('selected');
+      else if (lastMove &&
+        (lastMove[0][0] === r && lastMove[0][1] === c ||
+         lastMove[1][0] === r && lastMove[1][1] === c))
+        sq.classList.add('last-move');
+
+      const hit = legal.some(m => m[0] === r && m[1] === c);
+      if (hit) sq.classList.add(board[r][c] ? 'legal-take' : 'legal-empty');
+
+      if (gameOver) {
+        const kp = kingPos(board, turn);
+        if (kp && kp[0] === r && kp[1] === c) sq.classList.add('check');
+      }
+
+      boardEl.appendChild(sq);
+    }
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const f = document.createElement('div');
+    f.className = 'coord';
+    f.textContent = COLS[i];
+    f.style.left = (i * 12.5 + 6.25) + '%';
+    f.style.bottom = '6px';
+    f.style.transform = 'translateX(-50%)';
+    boardEl.appendChild(f);
+
+    const rk = document.createElement('div');
+    rk.className = 'coord';
+    rk.textContent = ROWS[i];
+    rk.style.top = (i * 12.5 + 6.25) + '%';
+    rk.style.left = '6px';
+    rk.style.transform = 'translateY(-50%)';
+    boardEl.appendChild(rk);
+  }
+
+  boardEl.classList.add('animate-pieces');
+  setTimeout(() => boardEl.classList.remove('animate-pieces'), 400);
+
+  turnText.textContent = turn === 'w' ? 'Белые' : 'Чёрные';
+  turnText.className = 'turn turn-' + turn;
+
+  moveList.innerHTML = '';
+  for (let i = 0; i < moves.length; i += 2) {
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+    pair.textContent = Math.floor(i / 2) + 1 + '.';
+    moveList.appendChild(pair);
+
+    const w = document.createElement('div');
+    w.className = 'move white' + (i === moves.length - 1 ? ' current' : '');
+    w.textContent = moves[i];
+    moveList.appendChild(w);
+
+    if (i + 1 < moves.length) {
+      const b = document.createElement('div');
+      b.className = 'move black' + (i + 1 === moves.length - 1 ? ' current' : '');
+      b.textContent = moves[i + 1];
+      moveList.appendChild(b);
+    }
+  }
+}
+
+/* ---------- инициализация ---------- */
+$('new-btn').addEventListener('click', initGame);
+$('menu-btn').addEventListener('click', () => { location.href = 'index.html'; });
+
+let flipped = false;
+$('flip-btn').addEventListener('click', () => {
+  flipped = !flipped;
+  $('board-wrap').style.transform = flipped ? 'rotate(180deg)' : '';
+});
+
+promoEl.querySelectorAll('.promo-btn').forEach(btn => {
+  btn.addEventListener('click', () => finishPromotion(btn.dataset.promo));
+});
+
+showStart();
+</script>
+</body>
+</html>

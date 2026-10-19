@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Крестики-нолики ❌⭕</title>
+<style>
+  :root { --square: min(25vw, 110px); }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+    background: #0b1021;
+    color: #e8eaf2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    min-height: 100vh;
+    touch-action: manipulation;
+  }
+
+  h1 { font-size: 1.35rem; margin: 0; }
+
+  /* ---------- стартовые экраны ---------- */
+  .screen {
+    position: fixed; inset: 0; background: #0b1021;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; z-index: 100; padding: 24px; text-align: center;
+  }
+  .screen.hidden { display: none; }
+
+  /* ---------- кнопки ---------- */
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  button {
+    border: none; border-radius: 12px; padding: 12px 22px;
+    font-family: inherit; font-size: 15px; font-weight: 700;
+    color: #0b1021; background: #e8eaf2; cursor: pointer;
+  }
+  button:hover { background: #ffffff; }
+  button:active { transform: scale(0.96); }
+
+  button.secondary { background: #334155; color: #e8eaf2; }
+  button.secondary:hover { background: #475569; }
+  button.big { padding: 16px 30px; font-size: 17px; min-width: 230px; }
+  button.outline { background: transparent; color: #e8eaf2; border: 2px solid #64748b; }
+  button.outline:hover { border-color: #e8eaf2; }
+
+  /* ---------- доска ---------- */
+  .wrap {
+    display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;
+    justify-content: center; max-width: 1080px;
+  }
+  .board-wrap { position: relative; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, var(--square));
+    grid-template-rows: repeat(3, var(--square));
+    border: 6px solid #1e293b; border-radius: 14px;
+    box-shadow: 0 24px 48px -12px rgba(0,0,0,.55);
+    touch-action: none; user-select: none; position: relative;
+    background: #0f172a;
+  }
+  .cell {
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--square) * 0.65); cursor: pointer; position: relative;
+    min-size: 80px; border: 2px solid #1e293b;
+  }
+  .cell.light { background: #e8d9a8; }
+  .cell.dark { background: #b58858; }
+  .cell.selected { background: #6ee7b7 !important; }
+  .cell.win { background: #34d399 !important; }
+  .mark { font-weight: 900; filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
+  .mark.x { color: #f87171; }
+  .mark.o { color: #60a5fa; }
+  .cell.winning { animation: winPop 0.6s ease-out; }
+  @keyframes winPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  .coord { position: absolute; font-size: 11px; color: #64748b; pointer-events: none; font-weight: 700; }
+
+  /* ---------- панель справа ---------- */
+  .sidebar {
+    display: flex; flex-direction: column; gap: 10px;
+    min-width: 250px; max-width: 360px;
+  }
+  .status {
+    font-size: 17px; font-weight: 700; padding: 10px 14px;
+    background: #1e293b; border-radius: 10px; text-align: center;
+  }
+  .turn-x { color: #f87171; }
+  .turn-o { color: #60a5fa; }
+  .mode-line { font-size: 13px; color: #94a3b8; text-align: center; margin-top: 4px; }
+  .move-list {
+    overflow: auto; max-height: 420px; border: 1px solid #334155;
+    border-radius: 10px; background: #0f172a; padding: 10px; font-size: 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .move-list .pair { font-weight: 700; color: #94a3b8; margin: 6px 0 2px; }
+  .move-list .move { margin: 3px 0; padding: 2px 6px; border-radius: 6px; }
+  .move-list .move.x { color: #f87171; }
+  .move-list .move.o { color: #60a5fa; }
+  .move-list .move.current { background: #334155; font-weight: 700; }
+  .over { font-size: 15px; font-weight: 700; text-align: center; padding: 8px; color: #6ee7b7; }
+  .thinking { font-size: 13px; color: #93c5fd; text-align: center; margin-top: 6px; }
+  .hint { font-size: 13px; color: #94a3b8; text-align: center; max-width: 320px; }
+
+  @media (max-width: 760px) {
+    .wrap { flex-direction: column; align-items: center; gap: 14px; }
+    .sidebar { width: 100%; max-width: 100%; flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 8px; }
+    .status { flex: 1; }
+    .move-list { flex: 1; max-height: 150px; }
+    :root { --square: min(35vw, 90px); }
+  }
+
+  /* ---------- анимации ---------- */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.55); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .screen { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+  #game-ui, #game-controls, #game-hint { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-marks .mark { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+</style>
+</head>
+<body>
+<h1>Крестики-нолики ❌⭕</h1>
+
+<!-- стартовый экран: выбор режима -->
+<div class="screen" id="start-screen">
+  <div style="font-size: 36px; margin-bottom: 4px;">❌⭕</div>
+  <h2 style="margin: 0 0 8px; font-size: 22px;">Крестики-нолики</h2>
+  <p style="color: #94a3b8; max-width: 300px; margin: 0 auto 16px;">
+    Выберите режим:
+  </p>
+  <div class="btn-row">
+    <button class="big" onclick="startGame('friend')">С другом</button>
+    <button class="big outline" onclick="showColor()">С ботом</button>
+  </div>
+  <p class="hint">Тапните на пустую клетку. Три в ряд — победа.</p>
+</div>
+
+<!-- выбор знака против бота -->
+<div class="screen hidden" id="color-screen">
+  <h2 style="margin: 0 0 8px; font-size: 20px;">За кем сыграете?</h2>
+  <div class="btn-row">
+    <button class="big" onclick="startGame('bot','x')">Крестики ❌ (вы первыми)</button>
+    <button class="big" onclick="startGame('bot','o')">Нолики ⭕ (бот первым)</button>
+  </div>
+  <div style="margin-top: 14px;">
+    <button class="secondary outline" onclick="showStart()">Назад</button>
+  </div>
+</div>
+
+<!-- сама игра (скрыта до выбора режима) -->
+<div class="wrap" id="game-ui" style="display:none;">
+  <div class="board-wrap" id="board-wrap">
+    <div class="board" id="board"></div>
+    <div id="bot-thinking" class="thinking hidden">Бот думает…</div>
+  </div>
+  <div class="sidebar">
+    <div class="status">Ход: <span class="turn turn-x" id="turn-text">Крестики</span></div>
+    <div class="mode-line" id="mode-line"></div>
+    <div id="over" class="over" hidden></div>
+    <div class="move-list" id="move-list"></div>
+  </div>
+</div>
+
+<div class="controls" id="game-controls" style="display:none;">
+  <button id="new-btn" class="secondary">Новая игра</button>
+  <button id="menu-btn" class="secondary">В меню</button>
+</div>
+
+<p class="hint" id="game-hint" style="display:none;">Тапните на пустую клетку. Три в ряд по горизонтали, вертикали или диагонали — победа.</p>
+
+<script>
+const LINES = [
+  [0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]
+];
+
+let board = Array(9).fill(null);
+let turn = 'x';
+let gameMode = 'friend';
+let humanSymbol = 'x';
+let gameOver = false;
+let botThinking = false;
+let moves = [];
+let winCells = null;
+
+const boardEl = $('board');
+const turnText = $('turn-text');
+const overEl = $('over');
+const moveList = $('move-list');
+const gameUI = $('game-ui');
+const gameControls = $('game-controls');
+const gameHint = $('game-hint');
+const modeLine = $('mode-line');
+const botThinkingEl = $('bot-thinking');
+
+function $(id) { return document.getElementById(id); }
+
+function showStart() {
+  $('start-screen').classList.remove('hidden');
+  $('color-screen').classList.add('hidden');
+  gameUI.style.display = 'none';
+  gameControls.style.display = 'none';
+  gameHint.style.display = 'none';
+}
+
+function showColor() {
+  $('start-screen').classList.add('hidden');
+  $('color-screen').classList.remove('hidden');
+  gameUI.style.display = 'none';
+}
+
+function startGame(mode, color) {
+  gameMode = mode;
+  humanSymbol = color !== undefined ? color : 'x';
+  $('start-screen').classList.add('hidden');
+  $('color-screen').classList.add('hidden');
+  gameUI.style.display = '';
+  gameControls.style.display = '';
+  gameHint.style.display = '';
+  modeLine.textContent = gameMode === 'bot'
+    ? 'Против бота — вы за ' + (humanSymbol === 'x' ? 'крестики ❌' : 'нолики ⭕')
+    : 'С другом на одном устройстве';
+  botThinking = false;
+  botThinkingEl.hidden = true;
+  initGame();
+}
+
+function other(s) { return s === 'x' ? 'o' : 'x'; }
+function cellName(i) { return String.fromCharCode(97 + (i % 3)) + (3 - Math.floor(i / 3)); }
+
+function initGame() {
+  board = Array(9).fill(null);
+  turn = 'x';
+  gameOver = false;
+  botThinking = false;
+  moves = [];
+  winCells = null;
+  botThinkingEl.hidden = true;
+  render();
+  maybeBotMove();
+}
+
+function handleCell(i) {
+  if (gameOver || botThinking || board[i]) return;
+  if (gameMode === 'bot' && turn !== humanSymbol) return;
+  makeMove(i);
+}
+
+function makeMove(i) {
+  board[i] = turn;
+  moves.push({ i: i, s: turn });
+
+  const w = checkWin();
+  if (w) {
+    gameOver = true;
+    winCells = w;
+    overEl.textContent = 'Победили ' + (turn === 'x' ? 'Крестики ❌' : 'Нолики ⭕') + '!';
+    overEl.hidden = false;
+    render();
+    return;
+  }
+  if (board.every(c => c !== null)) {
+    gameOver = true;
+    overEl.textContent = 'Ничья.';
+    overEl.hidden = false;
+    render();
+    return;
+  }
+
+  turn = other(turn);
+  render();
+  maybeBotMove();
+}
+
+function checkWin() {
+  for (const line of LINES) {
+    const [a, b, c] = line;
+    if (board[a] && board[a] === board[b] && board[b] === board[c]) return line;
+  }
+  return null;
+}
+
+function maybeBotMove() {
+  if (gameOver || gameMode !== 'bot' || turn === humanSymbol) return;
+  botThinking = true;
+  render();
+  setTimeout(() => {
+    const best = chooseBotMove();
+    if (best !== null) makeMove(best);
+  }, 600);
+}
+
+function chooseBotMove() {
+  const empty = board.map((v, i) => v === null ? i : null).filter(v => v !== null);
+  if (!empty.length) return null;
+
+  const me = turn;
+  const opp = other(me);
+
+  // выиграть
+  for (const i of empty) {
+    board[i] = me;
+    if (checkWin()) { board[i] = null; return i; }
+    board[i] = null;
+  }
+  // заблокировать
+  for (const i of empty) {
+    board[i] = opp;
+    if (checkWin()) { board[i] = null; return i; }
+    board[i] = null;
+  }
+  // центр
+  if (empty.includes(4)) return 4;
+  // угол
+  const corners = [0, 2, 6, 8].filter(i => empty.includes(i));
+  if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
+  return empty[Math.floor(Math.random() * empty.length)];
+}
+
+function render() {
+  boardEl.innerHTML = '';
+
+  board.forEach((v, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell ' + (Math.floor(i / 3) + i % 2 === 0 ? 'light' : 'dark');
+    cell.addEventListener('click', () => handleCell(i));
+
+    if (v) {
+      const m = document.createElement('div');
+      m.className = 'mark ' + v;
+      m.textContent = v === 'x' ? '❌' : '⭕';
+      cell.appendChild(m);
+    }
+
+    if (winCells && winCells.includes(i)) cell.classList.add('winning');
+    boardEl.appendChild(cell);
+  });
+
+  boardEl.classList.add('animate-marks');
+  setTimeout(() => boardEl.classList.remove('animate-marks'), 350);
+
+  turnText.textContent = turn === 'x' ? 'Крестики ❌' : 'Нолики ⭕';
+  turnText.className = 'turn turn-' + turn;
+
+  moveList.innerHTML = '';
+  for (let i = 0; i < moves.length; i += 2) {
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+    pair.textContent = Math.floor(i / 2) + 1 + '.';
+    moveList.appendChild(pair);
+
+    const mv = moves[i];
+    const x = document.createElement('div');
+    x.className = 'move x' + (i === moves.length - 1 ? ' current' : '');
+    x.textContent = (mv.s === 'x' ? '❌' : '⭕') + ' ' + cellName(mv.i);
+    moveList.appendChild(x);
+
+    if (i + 1 < moves.length) {
+      const mv2 = moves[i + 1];
+      const o = document.createElement('div');
+      o.className = 'move o' + (i + 1 === moves.length - 1 ? ' current' : '');
+      o.textContent = (mv2.s === 'o' ? '⭕' : '❌') + ' ' + cellName(mv2.i);
+      moveList.appendChild(o);
+    }
+  }
+}
+
+$('new-btn').addEventListener('click', initGame);
+$('menu-btn').addEventListener('click', () => { location.href = 'index.html'; });
+
+showStart();
+</script>
+</body>
+</html>
